@@ -1,12 +1,15 @@
 package com.example.fsanti.proofofvisit;
 
+import android.annotation.TargetApi;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothProfile;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.ParcelUuid;
 import android.os.StrictMode;
 import android.support.design.widget.FloatingActionButton;
@@ -97,6 +100,11 @@ public class MainActivity extends AppCompatActivity {
                 bluetoothGatt.discoverServices();
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(LOG_TAG_BLUETOOTH, "Not connected from GATT client");
+                if (133 == status) {
+                    // Sometimes status is 133, seems to be random. Retry?
+                    // https://stackoverflow.com/questions/25330938/android-bluetoothgatt-status-133-register-callback
+                    Log.i(LOG_TAG_BLUETOOTH, "Status 133, TODO: Retry connection");
+                }
             }
 
             bluetoothGatt.discoverServices();
@@ -111,40 +119,65 @@ public class MainActivity extends AppCompatActivity {
 
             // read the value of the characteristic
             Log.e(LOG_TAG_BLUETOOTH, "onServicesDiscovered");
-            BluetoothGattCharacteristic characteristic = gatt
+
+
+            BluetoothGattCharacteristic tx_characteristic = gatt
                     .getService(SERVICE_UUID_NORDIC_UART)
-                    .getCharacteristic(CHARACTERISTIC_UUID_RX);
+                    .getCharacteristic(CHARACTERISTIC_UUID_TX);
 
-
-            writeStringCharacteristic(gatt, characteristic, "HELLO RUUVI!!!");
-
-            /*
             // ask for notifications
-            gatt.setCharacteristicNotification(characteristic, true);
+            gatt.setCharacteristicNotification(tx_characteristic, true);
 
             // Write on the config descriptor to be notified when the value changes
             BluetoothGattDescriptor descriptor =
-                    characteristic.getDescriptor(DESCRIPTOR_UUID);
+                    tx_characteristic.getDescriptor(DESCRIPTOR_UUID);
             descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
             gatt.writeDescriptor(descriptor);
-            */
         }
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt,
                                             BluetoothGattCharacteristic characteristic) {
-            Log.d(LOG_TAG_BLUETOOTH, "onCharacteristicChanged");
+            Log.i(LOG_TAG_BLUETOOTH, "onCharacteristicChanged");
             // readCounterCharacteristic(characteristic);
+        }
+
+        @Override
+        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
+            Log.i("LOG_TAG_BLUETOOTH", characteristic.toString());
+            byte[] value=characteristic.getValue();
+            String v = new String(value);
+            Log.i("LOG_TAG_BLUETOOTH", "Value: " + v);
+        }
+
+        @Override
+        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status){
+            Log.i("LOG_TAG_BLUETOOTH", "Descriptor written");
+            BluetoothGattCharacteristic rx_characteristic = gatt
+                    .getService(SERVICE_UUID_NORDIC_UART)
+                    .getCharacteristic(CHARACTERISTIC_UUID_RX);
+
+            writeStringCharacteristic(gatt, rx_characteristic, "HELLO RUUVI!!!");
+        }
+
+        @Override
+        public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status)
+        {
+            Log.i("LOG_TAG_BLUETOOTH", "Characteristic written");
         }
     };
 
     /**
      * BLUETOOTH METHODS
      */
-
+    @TargetApi(23)
     private void connectGATT () {
-        Log.e(LOG_TAG_BLUETOOTH, "connecting GATT...");
-        bluetoothDevice.connectGatt(this, false, gattServerCallback);
+        Log.i(LOG_TAG_BLUETOOTH, "connecting GATT...");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            bluetoothDevice.connectGatt(this, false, gattServerCallback, BluetoothDevice.TRANSPORT_LE);
+        } else {
+            bluetoothDevice.connectGatt(this, false, gattServerCallback);
+        }
     }
 
     /*
@@ -163,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void writeStringCharacteristic(BluetoothGatt gatt,BluetoothGattCharacteristic characteristic, String str) {
-        Log.e(LOG_TAG_BLUETOOTH,"writeStringCharacteristic");
+        Log.i(LOG_TAG_BLUETOOTH,"writeStringCharacteristic");
         characteristic.setValue(str);
         // characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         gatt.writeCharacteristic(characteristic);
