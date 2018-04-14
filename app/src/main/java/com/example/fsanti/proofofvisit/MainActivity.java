@@ -46,6 +46,19 @@ public class MainActivity extends AppCompatActivity {
     private final String LOG_TAG_IOTA = "IOTAEvent";
     private BluetoothLeScannerCompat scannerCompat;
     private BluetoothDevice bluetoothDevice;
+    private BluetoothGatt gatt;
+    private BluetoothGattCharacteristic rx_characteristic;
+    private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
+
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for ( int j = 0; j < bytes.length; j++ ) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = hexArray[v >>> 4];
+            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+        }
+        return new String(hexChars);
+    }
 
     // UUID of beacon services to which the phone will connect
     // https://learn.adafruit.com/introducing-adafruit-ble-bluetooth-low-energy-friend/uart-service
@@ -111,7 +124,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+        public void onServicesDiscovered(BluetoothGatt _gatt, int status) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.e(LOG_TAG_BLUETOOTH, "onServicesDiscovered not connected");
                 return;
@@ -121,18 +134,25 @@ public class MainActivity extends AppCompatActivity {
             Log.e(LOG_TAG_BLUETOOTH, "onServicesDiscovered");
 
 
-            BluetoothGattCharacteristic tx_characteristic = gatt
+            BluetoothGattCharacteristic _tx_characteristic = _gatt
                     .getService(SERVICE_UUID_NORDIC_UART)
                     .getCharacteristic(CHARACTERISTIC_UUID_TX);
 
             // ask for notifications
-            gatt.setCharacteristicNotification(tx_characteristic, true);
+            _gatt.setCharacteristicNotification(_tx_characteristic, true);
 
             // Write on the config descriptor to be notified when the value changes
             BluetoothGattDescriptor descriptor =
-                    tx_characteristic.getDescriptor(DESCRIPTOR_UUID);
+                    _tx_characteristic.getDescriptor(DESCRIPTOR_UUID);
             descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            gatt.writeDescriptor(descriptor);
+            _gatt.writeDescriptor(descriptor);
+
+            BluetoothGattCharacteristic _rx_characteristic = _gatt
+                    .getService(SERVICE_UUID_NORDIC_UART)
+                    .getCharacteristic(CHARACTERISTIC_UUID_RX);
+
+            gatt = _gatt;
+            rx_characteristic = _rx_characteristic;
         }
 
         @Override
@@ -140,6 +160,8 @@ public class MainActivity extends AppCompatActivity {
                                             BluetoothGattCharacteristic characteristic) {
             Log.i(LOG_TAG_BLUETOOTH, "onCharacteristicChanged");
             // readCounterCharacteristic(characteristic);
+            byte[] value=characteristic.getValue();
+            Log.i("LOG_TAG_BLUETOOTH", bytesToHex(value));
         }
 
         @Override
@@ -198,6 +220,13 @@ public class MainActivity extends AppCompatActivity {
     private void writeStringCharacteristic(BluetoothGatt gatt,BluetoothGattCharacteristic characteristic, String str) {
         Log.i(LOG_TAG_BLUETOOTH,"writeStringCharacteristic");
         characteristic.setValue(str);
+        // characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+        gatt.writeCharacteristic(characteristic);
+    }
+
+    private void writeByteCharacteristic(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, byte[] bytes) {
+        Log.i(LOG_TAG_BLUETOOTH,"writeByteCharacteristic");
+        characteristic.setValue(bytes);
         // characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         gatt.writeCharacteristic(characteristic);
 
@@ -263,6 +292,11 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View view) {
                 Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
+                //Initiate challenge-response
+                Log.i(LOG_TAG_BLUETOOTH, "Request challenge");
+                byte[] initiate = new byte[]{(byte)0x00, (byte)0xFA, (byte)0x00, (byte)0x00};
+                writeByteCharacteristic(gatt, rx_characteristic, initiate);
+
 
                 // SEND TO IOTA
                 Log.i(LOG_TAG_IOTA, "Try to send to IOTA");
