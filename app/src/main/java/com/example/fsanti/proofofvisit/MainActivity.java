@@ -21,6 +21,8 @@ import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,6 +51,8 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic rx_characteristic;
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
+    private int stage = 0;
+    private byte[] challengeHash = new byte[32];
 
     public static String bytesToHex(byte[] bytes) {
         char[] hexChars = new char[bytes.length * 2];
@@ -58,6 +62,13 @@ public class MainActivity extends AppCompatActivity {
             hexChars[j * 2 + 1] = hexArray[v & 0x0F];
         }
         return new String(hexChars);
+    }
+
+    static CharsetEncoder asciiEncoder =
+            Charset.forName("US-ASCII").newEncoder(); // or "ISO-8859-1" for ISO Latin 1
+
+    public static boolean isPureAscii(String v) {
+        return asciiEncoder.canEncode(v);
     }
 
     // UUID of beacon services to which the phone will connect
@@ -116,7 +127,8 @@ public class MainActivity extends AppCompatActivity {
                 if (133 == status) {
                     // Sometimes status is 133, seems to be random. Retry?
                     // https://stackoverflow.com/questions/25330938/android-bluetoothgatt-status-133-register-callback
-                    Log.i(LOG_TAG_BLUETOOTH, "Status 133, TODO: Retry connection");
+                    Log.i(LOG_TAG_BLUETOOTH, "Status 133, Retry connection");
+                    startScan();
                 }
             }
 
@@ -161,7 +173,34 @@ public class MainActivity extends AppCompatActivity {
             Log.i(LOG_TAG_BLUETOOTH, "onCharacteristicChanged");
             // readCounterCharacteristic(characteristic);
             byte[] value=characteristic.getValue();
-            Log.i("LOG_TAG_BLUETOOTH", bytesToHex(value));
+            String str = new String(value, StandardCharsets.UTF_8);
+            if(isPureAscii(str)) {
+              Log.i(LOG_TAG_BLUETOOTH, str);
+            } else {
+                if(1 == stage ) {
+                    Log.i(LOG_TAG_BLUETOOTH, "Part 1 of challenge received, copying " + value[3] + " bytes");
+                    System.arraycopy(value,
+                            4,
+                            challengeHash,
+                            0,
+                            value[3]);
+                    stage ++;
+                } else if (2 == stage) {
+                    Log.i(LOG_TAG_BLUETOOTH, "Part 1 of challenge received, copying " + value[3] + " bytes");
+                    System.arraycopy(value,
+                            4,
+                            challengeHash,
+                            16,
+                            value[3]);
+                    stage ++;
+                    Log.i(LOG_TAG_BLUETOOTH, "Challenge received " + bytesToHex(challengeHash));
+                    Log.i(LOG_TAG_IOTA, "Try to send to IOTA");
+                    sendToIOTA();
+
+                } else {
+                    Log.e(LOG_TAG_BLUETOOTH, "Replying to challenge not implemented");
+                }
+            }
         }
 
         @Override
@@ -228,7 +267,14 @@ public class MainActivity extends AppCompatActivity {
         Log.i(LOG_TAG_BLUETOOTH,"writeByteCharacteristic");
         characteristic.setValue(bytes);
         // characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-        gatt.writeCharacteristic(characteristic);
+        // If write was started successfully
+        if(gatt.writeCharacteristic(characteristic)) {
+            //Update state
+            stage = 1;
+        } else {
+            Log.e(LOG_TAG_BLUETOOTH, "Could not request challenge");
+            stage = 0;
+        }
 
     }
 
@@ -244,8 +290,9 @@ public class MainActivity extends AppCompatActivity {
                 .port("80")
                 .build();
 
-
-        if (api != null && api.getNodeInfo() != null) {
+        GetNodeInfoResponse nodeInfo = api.getNodeInfo();
+        // Log.e(LOG_TAG_IOTA, "APP Version: " + api.getNodeInfo().getAppVersion());
+        if (api != null && nodeInfo != null) {
 
             Log.e(LOG_TAG_IOTA, "APP Version: " + api.getNodeInfo().getAppVersion());
 
@@ -299,17 +346,21 @@ public class MainActivity extends AppCompatActivity {
 
 
                 // SEND TO IOTA
-                Log.i(LOG_TAG_IOTA, "Try to send to IOTA");
+                //Log.i(LOG_TAG_IOTA, "Try to send to IOTA");
                 sendToIOTA();
             }
         });
 
+        startScan();
+    }
+
+    protected void startScan(){
         // Instantiate Bluetooth Scanner
         scannerCompat = BluetoothLeScannerCompat.getScanner();
 
         ScanSettings scanSettings = new ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .setReportDelay(1000)
+                .setReportDelay(2500)
                 .build();
 
         // only filter beacons which implement our service
