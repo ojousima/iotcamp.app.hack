@@ -43,6 +43,8 @@ import no.nordicsemi.android.support.v18.scanner.ScanFilter;
 import no.nordicsemi.android.support.v18.scanner.ScanResult;
 import no.nordicsemi.android.support.v18.scanner.ScanSettings;
 
+import static java.lang.System.currentTimeMillis;
+
 public class MainActivity extends AppCompatActivity {
 
     private final String LOG_TAG_BLUETOOTH = "BluetoothEvent";
@@ -53,6 +55,8 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothGattCharacteristic rx_characteristic;
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
     private int stage = 0;
+    private long start_ms = 0;
+    private int num_entries = 0;
     private byte[] challengeHash = new byte[32];
 
     public static String bytesToHex(byte[] bytes) {
@@ -175,17 +179,26 @@ public class MainActivity extends AppCompatActivity {
                 Log.i(LOG_TAG_BLUETOOTH, "Heart beats");
             }
             // readCounterCharacteristic(characteristic);
+
             byte[] value=characteristic.getValue();
             if(1 == stage)
             {
                 Log.i(LOG_TAG_BLUETOOTH, "Muchos datos");
+                start_ms = currentTimeMillis();
+                num_entries = 0;
                 stage++;
             }
             if(2 == stage)
             {
                 if(-1 == ByteBuffer.wrap(value, 3, 8).getLong()) {
-                    Log.i(LOG_TAG_BLUETOOTH, "Log read complete");
+                    Log.i(LOG_TAG_BLUETOOTH,
+                            String.format("Log read complete in %d ms, got %d entries",
+                                    (currentTimeMillis() - start_ms), num_entries));
                     stage = 0;
+                }
+                else
+                {
+                    num_entries++;
                 }
             }
         }
