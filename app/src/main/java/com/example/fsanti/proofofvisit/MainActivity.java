@@ -21,6 +21,7 @@ import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
@@ -77,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
     UUID CHARACTERISTIC_UUID_RX = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
     UUID CHARACTERISTIC_UUID_TX = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
     UUID DESCRIPTOR_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-    String deviceAddress = "EA:17:E9:64:3A:7A"; //"DB:12:B4:4A:73:79";
+    String deviceAddress = "CE:19:50:1D:50:A5"; //"DB:12:B4:4A:73:79";
 
     // callback to discover the beacon implementing the POV GATT Service
     private final ScanCallback scanCallback = new ScanCallback() {
@@ -170,35 +171,21 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt,
                                             BluetoothGattCharacteristic characteristic) {
-            Log.i(LOG_TAG_BLUETOOTH, "onCharacteristicChanged");
+            if(0 == stage) {
+                Log.i(LOG_TAG_BLUETOOTH, "Heart beats");
+            }
             // readCounterCharacteristic(characteristic);
             byte[] value=characteristic.getValue();
-            String str = new String(value, StandardCharsets.UTF_8);
-            if(isPureAscii(str)) {
-              Log.i(LOG_TAG_BLUETOOTH, str);
-            } else {
-                if(1 == stage ) {
-                    Log.i(LOG_TAG_BLUETOOTH, "Part 1 of challenge received, copying " + value[3] + " bytes");
-                    System.arraycopy(value,
-                            4,
-                            challengeHash,
-                            0,
-                            value[3]);
-                    stage ++;
-                } else if (2 == stage) {
-                    Log.i(LOG_TAG_BLUETOOTH, "Part 1 of challenge received, copying " + value[3] + " bytes");
-                    System.arraycopy(value,
-                            4,
-                            challengeHash,
-                            16,
-                            value[3]);
-                    stage ++;
-                    Log.i(LOG_TAG_BLUETOOTH, "Challenge received " + bytesToHex(challengeHash));
-                    Log.i(LOG_TAG_IOTA, "Try to send to IOTA");
-                    sendToIOTA();
-
-                } else {
-                    Log.e(LOG_TAG_BLUETOOTH, "Replying to challenge not implemented");
+            if(1 == stage)
+            {
+                Log.i(LOG_TAG_BLUETOOTH, "Muchos datos");
+                stage++;
+            }
+            if(2 == stage)
+            {
+                if(-1 == ByteBuffer.wrap(value, 3, 8).getLong()) {
+                    Log.i(LOG_TAG_BLUETOOTH, "Log read complete");
+                    stage = 0;
                 }
             }
         }
@@ -279,45 +266,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * IOTA METHODS
-     */
-
-    private void sendToIOTA () {
-
-        IotaAPI api = new IotaAPI.Builder()
-                .protocol("http")
-                .host("nodes.iota.fm")
-                .port("80")
-                .build();
-
-        GetNodeInfoResponse nodeInfo = api.getNodeInfo();
-        // Log.e(LOG_TAG_IOTA, "APP Version: " + api.getNodeInfo().getAppVersion());
-        if (api != null && nodeInfo != null) {
-
-            Log.e(LOG_TAG_IOTA, "APP Version: " + api.getNodeInfo().getAppVersion());
-
-            String seed = "XWKTJAVSSPKSFLBQHHD9AZIZKGYIEAXVERYVCBSERKSHERWITYCICPYOJKQVJJSBURFDBPUFHIOJS9TGAARJVGG9HD";
-            String address = "XWKTJAVSSPKSFLBQHHD9AZIZKGYIEAXVERYVCBSERKSHERWITYCICPYOJKQVJJSBURFDBPUFHIOJS9TGAARJVGG9HD";
-            String address_remainder = "XWKTJAVSSPKSFLBQHHD9AZIZKGYIEAXVERYVCBSERKSHERWITYCICPYOJKQVJJSBURFDBPUFHIOJS9TGAARJVGG9H0";
-            String tag = "ILOVEIOTA999999999999999999";
-            String msg = "HELLO WE ARE ALL TOGETHER";
-
-            List<Transfer> transfers = new ArrayList<>();
-            Transfer transfer = new Transfer(address, 0, TrytesConverter.toTrytes(msg), tag);
-            transfers.add(transfer);
-
-            /*
-            SendTransferResponse response = api.sendTransfer(seed, 2, 9,
-                    15, transfers, null,"",false);
-            */
-
-        }
-
-
-
-    }
-
-    /**
      * LIFECYCLE METHODS
      */
 
@@ -341,13 +289,13 @@ public class MainActivity extends AppCompatActivity {
                         .setAction("Action", null).show();
                 //Initiate challenge-response
                 Log.i(LOG_TAG_BLUETOOTH, "Request challenge");
-                byte[] initiate = new byte[]{(byte)0x00, (byte)0xFA, (byte)0x00, (byte)0x00};
+                byte[] initiate = new byte[]{0x3A, 0x3A, 0x11, 0x5A, 0x5A, 0x5A, 0x5A, 0,0,0,0};
                 writeByteCharacteristic(gatt, rx_characteristic, initiate);
 
 
                 // SEND TO IOTA
                 //Log.i(LOG_TAG_IOTA, "Try to send to IOTA");
-                sendToIOTA();
+                //sendToIOTA();
             }
         });
 
